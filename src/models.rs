@@ -35,7 +35,9 @@ impl Bill {
 
 #[derive(Debug, Clone)]
 pub struct TextChunk {
+    #[allow(dead_code)]
     pub bill_id: Uuid,
+    #[allow(dead_code)]
     pub bill_number: String,
     pub chunk_index: usize,
     pub chunk_type: ChunkType,
@@ -73,6 +75,7 @@ pub struct EmbeddedChunk {
 #[derive(Debug, Clone)]
 pub struct SearchResult {
     pub bill_title: String,
+    #[allow(dead_code)]
     pub bill_number: String,
     pub chunk_identifier: String,
     pub content: String,

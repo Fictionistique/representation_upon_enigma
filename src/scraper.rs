@@ -7,10 +7,11 @@ pub async fn fetch_recent_bills(count: usize) -> Result<Vec<Bill>> {
     tracing::info!("Fetching bills from PRS Legislative Research...");
     
     // PRS India's bill tracking page
-    let url = "https://prsindia.org/billtrack/recent-bills";
+    let url = "https://prsindia.org/billtrack";
     
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(30))
         .build()?;
     
     let response = client
@@ -19,57 +20,125 @@ pub async fn fetch_recent_bills(count: usize) -> Result<Vec<Bill>> {
         .await
         .context("Failed to fetch PRS bills page")?;
     
+    if !response.status().is_success() {
+        anyhow::bail!("HTTP error {}: Failed to fetch bills", response.status());
+    }
+    
     let html_content = response.text().await?;
     let document = Html::parse_document(&html_content);
     
     // Parse the HTML to extract bill information
-    // Note: This is a simplified implementation. The actual PRS website structure may vary.
-    let bills = parse_bills_from_html(&document, count)?;
+    let bills = parse_bills_from_html(&document, count, &client).await?;
     
-    // If we can't scrape from PRS (due to structure changes), return mock data for demo
     if bills.is_empty() {
-        tracing::warn!("Could not scrape bills from PRS. Using demo data instead.");
-        return Ok(create_demo_bills(count));
+        anyhow::bail!("No bills found on PRS website. The page structure may have changed.");
     }
     
+    tracing::info!("Successfully fetched {} bills from PRS", bills.len());
     Ok(bills)
 }
 
-fn parse_bills_from_html(document: &Html, count: usize) -> Result<Vec<Bill>> {
+async fn parse_bills_from_html(document: &Html, count: usize, client: &reqwest::Client) -> Result<Vec<Bill>> {
     let mut bills = Vec::new();
     
-    // Selector for bill rows (this is approximate - actual structure may differ)
-    let row_selector = Selector::parse("tr.bill-row, .bill-item, article.bill").unwrap();
-    let title_selector = Selector::parse(".bill-title, h3, .title").unwrap();
-    let link_selector = Selector::parse("a[href*='pdf'], a[href*='bill']").unwrap();
+    // PRS India structure: bills are in h3 tags with links to bill pages
+    let h3_selector = Selector::parse("h3").unwrap();
+    let a_selector = Selector::parse("a").unwrap();
     
-    for element in document.select(&row_selector).take(count) {
-        if let Some(title_elem) = element.select(&title_selector).next() {
-            let title = title_elem.text().collect::<String>().trim().to_string();
+    for h3 in document.select(&h3_selector).take(count * 2) { // Take more to filter
+        if let Some(link_elem) = h3.select(&a_selector).next() {
+            let title = link_elem.text().collect::<String>().trim().to_string();
             
-            if let Some(link_elem) = element.select(&link_selector).next() {
-                if let Some(href) = link_elem.value().attr("href") {
-                    let pdf_url = if href.starts_with("http") {
-                        href.to_string()
-                    } else {
-                        format!("https://prsindia.org{}", href)
-                    };
-                    
-                    // Extract bill number from title or use a generated one
-                    let bill_number = extract_bill_number(&title);
-                    
-                    bills.push(Bill::new(
-                        title,
-                        bill_number,
-                        2024, // Current year
-                        pdf_url,
-                    ));
+            // Skip empty or irrelevant titles
+            if title.is_empty() || title.len() < 10 {
+                continue;
+            }
+            
+            // Get the bill detail page URL
+            if let Some(href) = link_elem.value().attr("href") {
+                let bill_url = if href.starts_with("http") {
+                    href.to_string()
+                } else {
+                    format!("https://prsindia.org{}", href)
+                };
+                
+                tracing::debug!("Found bill: {} at {}", title, bill_url);
+                
+                // Try to find PDF link from the bill detail page
+                let pdf_url = fetch_pdf_url_from_bill_page(&bill_url, client).await
+                    .unwrap_or_else(|_| generate_placeholder_pdf_url(&title));
+                
+                // Extract year from title
+                let year = extract_year_from_title(&title);
+                
+                // Extract bill number
+                let bill_number = extract_bill_number(&title);
+                
+                bills.push(Bill::new(
+                    title,
+                    bill_number,
+                    year,
+                    pdf_url,
+                ));
+                
+                if bills.len() >= count {
+                    break;
                 }
             }
         }
     }
     
     Ok(bills)
+}
+
+async fn fetch_pdf_url_from_bill_page(bill_url: &str, client: &reqwest::Client) -> Result<String> {
+    tracing::debug!("Fetching PDF link from bill page: {}", bill_url);
+    
+    let response = client.get(bill_url).send().await?;
+    let html = response.text().await?;
+    let document = Html::parse_document(&html);
+    
+    // Look for PDF links
+    let link_selector = Selector::parse("a[href*='.pdf'], a[href*='files'], a[href*='download']").unwrap();
+    
+    for link in document.select(&link_selector) {
+        if let Some(href) = link.value().attr("href") {
+            // Prioritize actual PDF links
+            if href.ends_with(".pdf") || href.contains(".pdf") {
+                let pdf_url = if href.starts_with("http") {
+                    href.to_string()
+                } else if href.starts_with("/") {
+                    format!("https://prsindia.org{}", href)
+                } else {
+                    format!("https://prsindia.org/{}", href)
+                };
+                
+                tracing::debug!("Found PDF URL: {}", pdf_url);
+                return Ok(pdf_url);
+            }
+        }
+    }
+    
+    anyhow::bail!("No PDF link found on bill page")
+}
+
+fn generate_placeholder_pdf_url(title: &str) -> String {
+    // Generate a searchable URL - this will fail gracefully and use demo content
+    let sanitized = title.replace(" ", "%20");
+    format!("https://prsindia.org/files/bills_acts/bills_parliament/{}", sanitized)
+}
+
+fn extract_year_from_title(title: &str) -> i32 {
+    // Extract year from title (e.g., "The XYZ Bill, 2024")
+    let re = regex::Regex::new(r"(\d{4})").unwrap();
+    if let Some(caps) = re.captures(title) {
+        if let Ok(year) = caps[1].parse::<i32>() {
+            if year >= 1990 && year <= 2030 {
+                return year;
+            }
+        }
+    }
+    2024 // Default to current year
 }
 
 fn extract_bill_number(title: &str) -> String {
@@ -81,74 +150,27 @@ fn extract_bill_number(title: &str) -> String {
         return format!("{}/{}", &caps[1], &caps[2]);
     }
     
-    let re2 = regex::Regex::new(r"(\d{4})").unwrap();
-    if let Some(caps) = re2.captures(title) {
-        let year = &caps[1];
-        let hash_bytes = md5::compute(title.as_bytes());
-        let hash = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-        return format!("{}/{}", &hash[..6], year);
+    // Extract amendment number if present
+    let re_amendment = regex::Regex::new(r"(?i)\(.*?(\d+)(?:st|nd|rd|th)\s+Amendment\)").unwrap();
+    if let Some(caps) = re_amendment.captures(title) {
+        let year = extract_year_from_title(title);
+        return format!("AMEND-{}/{}", &caps[1], year);
     }
     
-    // Fallback: generate from title hash
-    let hash_bytes = md5::compute(title.as_bytes());
-    let hash = hash_bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-    format!("{}/2024", &hash[..8])
+    // Generate from title and year
+    let year = extract_year_from_title(title);
+    let hash_bytes = simple_hash(title.as_bytes());
+    let hash_str = format!("{:x}", hash_bytes);
+    format!("{}/{}", &hash_str[..6].to_uppercase(), year)
 }
 
-/// Creates demo bills for testing when scraping isn't available
-fn create_demo_bills(count: usize) -> Vec<Bill> {
-    let demo_data = vec![
-        (
-            "The Digital Personal Data Protection Bill, 2023",
-            "DPDP/2023",
-            2023,
-            "https://www.meity.gov.in/writereaddata/files/Digital%20Personal%20Data%20Protection%20Bill%2C%202023.pdf"
-        ),
-        (
-            "The Criminal Procedure (Identification) Bill, 2022",
-            "CPI/2022",
-            2022,
-            "https://prsindia.org/files/bills_acts/bills_parliament/2022/Criminal%20Procedure%20(Identification)%20Bill,%202022.pdf"
-        ),
-        (
-            "The Telecommunications Bill, 2023",
-            "TELE/2023",
-            2023,
-            "https://dot.gov.in/sites/default/files/2023_09_20%20Telecom%20Bill%202023%20AS%20INTRODUCED_0.pdf"
-        ),
-        (
-            "The Constitution (One Hundred and Twenty-Eighth Amendment) Bill, 2023",
-            "CONST128/2023",
-            2023,
-            "https://sansad.in/getFile/loksabhaquestions/annex/1711/AS20.pdf"
-        ),
-        (
-            "The Multi-State Co-operative Societies (Amendment) Bill, 2022",
-            "MSCS/2022",
-            2022,
-            "https://prsindia.org/files/bills_acts/bills_parliament/2022/Multi-State%20Cooperative%20Societies%20(Amendment)%20Bill,%202022.pdf"
-        ),
-    ];
+// Simple hash function for bill number generation
+fn simple_hash(input: &[u8]) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
     
-    demo_data
-        .into_iter()
-        .take(count)
-        .map(|(title, number, year, url)| {
-            Bill::new(title.to_string(), number.to_string(), year, url.to_string())
-        })
-        .collect()
-}
-
-// Mock MD5 implementation for bill number generation
-mod md5 {
-    pub fn compute(input: &[u8]) -> Vec<u8> {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        
-        let mut hasher = DefaultHasher::new();
-        input.hash(&mut hasher);
-        let hash = hasher.finish();
-        hash.to_le_bytes().to_vec()
-    }
+    let mut hasher = DefaultHasher::new();
+    input.hash(&mut hasher);
+    hasher.finish()
 }
 

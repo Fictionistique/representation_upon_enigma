@@ -3,13 +3,41 @@ use crate::models::{EmbeddedChunk, TextChunk};
 use candle_core::{Device, IndexOp, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
-use hf_hub::{api::sync::Api, Repo, RepoType};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokenizers::Tokenizer;
 use tokio::sync::Mutex;
 
 const MODEL_ID: &str = "sentence-transformers/all-MiniLM-L6-v2";
-const EMBEDDING_DIM: usize = 384;
+
+fn download_file(cache_dir: &PathBuf, base_url: &str, filename: &str) -> Result<PathBuf> {
+    let file_path = cache_dir.join(filename);
+    
+    // Check if file already exists
+    if file_path.exists() {
+        tracing::debug!("{} already cached", filename);
+        return Ok(file_path);
+    }
+    
+    tracing::info!("Downloading {} (this may take a minute for large files)...", filename);
+    let url = format!("{}/{}", base_url, filename);
+    
+    // Use blocking reqwest with extended timeout for large model files
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(300)) // 5 minutes
+        .build()?;
+    
+    let response = client.get(&url).send()?;
+    if !response.status().is_success() {
+        anyhow::bail!("Failed to download {}: HTTP {}", filename, response.status());
+    }
+    
+    let bytes = response.bytes()?;
+    std::fs::write(&file_path, bytes)?;
+    tracing::info!("✓ {} downloaded successfully", filename);
+    
+    Ok(file_path)
+}
 
 struct EmbeddingModel {
     model: BertModel,
@@ -30,18 +58,23 @@ async fn get_or_init_model() -> Result<Arc<Mutex<Option<EmbeddingModel>>>> {
         tracing::info!("Initializing Candle embedding model (downloading {} on first run)...", MODEL_ID);
         
         // Download model from HuggingFace Hub
-        let model_data = tokio::task::spawn_blocking(|| -> Result<EmbeddingModel> {
-            let api = Api::new()?;
-            let repo = api.repo(Repo::with_revision(
-                MODEL_ID.to_string(),
-                RepoType::Model,
-                "main".to_string(),
-            ));
-            
+        let model_data = tokio::task::spawn_blocking(move || -> Result<EmbeddingModel> {
             tracing::info!("Downloading model files from HuggingFace...");
-            let config_path = repo.get("config.json")?;
-            let tokenizer_path = repo.get("tokenizer.json")?;
-            let weights_path = repo.get("model.safetensors")?;
+            
+            // Manually download files from HuggingFace (workaround for Windows URL parsing issue)
+            let cache_dir = dirs::cache_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("huggingface")
+                .join("hub")
+                .join("models--sentence-transformers--all-MiniLM-L6-v2");
+            
+            std::fs::create_dir_all(&cache_dir)?;
+            
+            let base_url = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
+            
+            let config_path = download_file(&cache_dir, base_url, "config.json")?;
+            let tokenizer_path = download_file(&cache_dir, base_url, "tokenizer.json")?;
+            let weights_path = download_file(&cache_dir, base_url, "model.safetensors")?;
             
             tracing::info!("Loading model configuration...");
             let config = std::fs::read_to_string(config_path)?;
@@ -195,17 +228,18 @@ fn encode_batch(texts: &[String], model_data: &EmbeddingModel) -> Result<Vec<Vec
     let token_ids_array: Vec<u32> = token_ids_padded.concat();
     let attention_mask_array: Vec<u32> = attention_masks_padded.concat();
     
+    // Create tensors as u32 first, then convert to i64 for BERT
     let token_ids_tensor = Tensor::from_vec(
         token_ids_array,
         (texts.len(), max_len),
         &model_data.device,
-    )?;
+    )?.to_dtype(candle_core::DType::I64)?; // BERT expects i64 for token IDs
     
     let attention_mask_tensor = Tensor::from_vec(
         attention_mask_array,
         (texts.len(), max_len),
         &model_data.device,
-    )?;
+    )?.to_dtype(candle_core::DType::I64)?; // BERT expects i64 for attention masks
     
     // Run model (third parameter is token_type_ids, None for sentence embeddings)
     let embeddings = model_data.model.forward(&token_ids_tensor, &attention_mask_tensor, None)?;
@@ -220,14 +254,16 @@ fn encode_batch(texts: &[String], model_data: &EmbeddingModel) -> Result<Vec<Vec
         let mask = attention_mask_tensor.i(i)?;
         
         // Apply mean pooling with attention mask
-        let mask_expanded = mask
+        // Convert mask from i64 to f32 for multiplication with embeddings
+        let mask_f32 = mask.to_dtype(candle_core::DType::F32)?;
+        let mask_expanded = mask_f32
             .unsqueeze(1)?
             .expand((seq_len, hidden_size))?
             .to_dtype(DTYPE)?;
         
         let masked_embeddings = (seq_embeddings * mask_expanded)?;
         let sum_embeddings = masked_embeddings.sum(0)?;
-        let sum_mask = mask.sum_all()?.to_scalar::<f32>()?;
+        let sum_mask = mask_f32.sum_all()?.to_scalar::<f32>()?;
         
         // Convert sum_mask to tensor for division
         let sum_mask_tensor = Tensor::new(&[sum_mask], &model_data.device)?.to_dtype(DTYPE)?;

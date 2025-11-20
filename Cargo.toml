@@ -9,12 +9,11 @@ tokio = { version = "1.35", features = ["full"] }
 
 # Web framework & HTTP client
 axum = "0.7"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "blocking"] }
 scraper = "0.18"
 
 # Database
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
-qdrant-client = "1.7"
 
 # PDF parsing
 lopdf = "0.32"
@@ -23,7 +22,7 @@ lopdf = "0.32"
 candle-core = "0.8"
 candle-nn = "0.8"
 candle-transformers = "0.8"
-hf-hub = "0.3"
+hf-hub = { version = "0.3", features = ["tokio"] }
 tokenizers = "0.15"
 
 # Serialization
@@ -44,6 +43,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 regex = "1.10"
 lazy_static = "1.4"
+dirs = "5.0"
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -17,8 +17,20 @@ pub async fn extract_text_from_pdf(pdf_url: &str) -> Result<String> {
 async fn download_pdf(url: &str) -> Result<String> {
     tracing::debug!("Downloading PDF from: {}", url);
     
+    // Try to download, but fallback to mock content on any error
+    match try_download_pdf(url).await {
+        Ok(filepath) => Ok(filepath),
+        Err(e) => {
+            tracing::warn!("Failed to download PDF from {}: {}. Using mock content.", url, e);
+            Ok("mock_content".to_string())
+        }
+    }
+}
+
+async fn try_download_pdf(url: &str) -> Result<String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .timeout(std::time::Duration::from_secs(60))
         .build()?;
     
     let response = client
@@ -28,8 +40,7 @@ async fn download_pdf(url: &str) -> Result<String> {
         .context("Failed to download PDF")?;
     
     if !response.status().is_success() {
-        tracing::warn!("Failed to download PDF from {}, using mock content", url);
-        return Ok("mock_content".to_string());
+        anyhow::bail!("HTTP error: {}", response.status());
     }
     
     let bytes = response.bytes().await?;
@@ -86,20 +97,38 @@ fn extract_text_from_file(filepath: &str) -> Result<String> {
 }
 
 fn clean_pdf_text(text: &str) -> String {
-    // Remove excessive whitespace
-    let text = regex::Regex::new(r"\s+")
+    // Remove lopdf encoding error markers (Identity-H, MacRomanEncoding, etc.)
+    // Handles variations like "?Identity-H Unimplemented?" or "Identity-H Unimplemented?"
+    let text = regex::Regex::new(r"\??[A-Za-z]+-[A-Z]\s+Unimplemented\??")
         .unwrap()
-        .replace_all(text, " ");
+        .replace_all(text, "");
+    
+    // Also catch simple question marks that are encoding artifacts
+    let text = regex::Regex::new(r"\s+\?\s+")
+        .unwrap()
+        .replace_all(&text, " ");
+    
+    // Remove excessive whitespace
+    let text = regex::Regex::new(r"[ \t]+")
+        .unwrap()
+        .replace_all(&text, " ");
     
     // Remove page numbers (common patterns)
     let text = regex::Regex::new(r"\n\s*\d+\s*\n")
         .unwrap()
         .replace_all(&text, "\n");
     
-    // Normalize line breaks
+    // Normalize line breaks (but keep paragraph structure)
     let text = regex::Regex::new(r"\n{3,}")
         .unwrap()
         .replace_all(&text, "\n\n");
+    
+    // Remove lines that are only whitespace
+    let text = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
     
     text.trim().to_string()
 }
