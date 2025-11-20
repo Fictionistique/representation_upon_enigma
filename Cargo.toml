@@ -1,0 +1,62 @@
+[package]
+name = "representation_upon_enigma"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Web framework & HTTP client
+axum = "0.7"
+reqwest = { version = "0.11", features = ["json"] }
+scraper = "0.18"
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
+qdrant-client = "1.7"
+
+# PDF parsing
+lopdf = "0.32"
+
+# ML/AI - Using Candle (pure Rust ML framework)
+candle-core = "0.8"
+candle-nn = "0.8"
+candle-transformers = "0.8"
+hf-hub = "0.3"
+tokenizers = "0.15"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+regex = "1.10"
+lazy_static = "1.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+# Optimize for smaller binary and faster compile times in dev
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Production optimizations
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
