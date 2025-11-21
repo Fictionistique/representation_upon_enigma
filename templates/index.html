@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="main-layout">
+    <div class="search-section">
+        <!-- Search Container -->
+        <div class="search-container">
+            <form hx-get="/api/search" 
+                  hx-target="#search-suggestions"
+                  hx-indicator="#search-loading"
+                  class="search-form">
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    placeholder="Search legislative bills..." 
+                    name="query"
+                    id="search-query"
+                />
+                <button type="submit" class="search-btn">Search</button>
+            </form>
+            <div id="search-loading" class="loading-bar htmx-indicator">
+                <div class="loading-bar-progress"></div>
+            </div>
+            <div id="search-suggestions" class="search-suggestions" style="display: none;"></div>
+        </div>
+
+        <!-- Forum Section (Initially Hidden) -->
+        <div id="forum-section" class="forum-section hidden">
+            <!-- Forum content will be loaded here via HTMX -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="empty-state">
+            <p>👆 Enter a query to search through legislative bills</p>
+            <p>Or select a recent bill from the sidebar →</p>
+        </div>
+    </div>
+
+    <!-- Recent Bills Sidebar -->
+    <aside class="recent-bills">
+        <h2>Recent Bills</h2>
+        <ul class="bill-list" id="recent-bills">
+            {% for bill in recent_bills %}
+            <li class="bill-item" 
+                hx-get="/api/bill/{{ bill.id }}/forum" 
+                hx-target="#forum-section"
+                hx-swap="innerHTML"
+                onclick="showForum()">
+                <div class="bill-title">{{ bill.title }}</div>
+                <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
+            </li>
+            {% endfor %}
+        </ul>
+    </aside>
+</div>
+
+<script>
+    function showForum() {
+        document.getElementById('forum-section').classList.remove('hidden');
+        document.getElementById('empty-state').style.display = 'none';
+    }
+
+    function selectSuggestion(billId) {
+        // Hide suggestions
+        document.getElementById('search-suggestions').style.display = 'none';
+        
+        // Load forum
+        htmx.ajax('GET', '/api/bill/' + billId + '/forum', {
+            target: '#forum-section',
+            swap: 'innerHTML'
+        }).then(() => {
+            showForum();
+        });
+    }
+
+    // Show suggestions when they load
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target.id === 'search-suggestions') {
+            const suggestions = event.detail.target;
+            if (suggestions.children.length > 0) {
+                suggestions.style.display = 'block';
+            } else {
+                suggestions.style.display = 'none';
+            }
+        }
+    });
+</script>
+{% endblock %}
+

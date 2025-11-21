@@ -1,0 +1,68 @@
+<div class="forum-header">
+    <h2 class="forum-title">{{ bill.title }}</h2>
+    <p class="forum-subtitle">Bill No. {{ bill.number }} · {{ bill.year }} · Discussion Forum</p>
+</div>
+
+<!-- Reviews -->
+<div class="reviews-list">
+    {% for review in reviews %}
+    <div class="review-card">
+        <div class="review-header">
+            <div>
+                <div class="reviewer-info">Verified Constituent · {{ review.constituency }}</div>
+                <div class="review-date">{{ review.date }}</div>
+            </div>
+            <div class="review-stance {% if review.stance == "Support" %}support{% else %}{% if review.stance == "Oppose" %}oppose{% else %}critique{% endif %}{% endif %}">{{ review.stance }}</div>
+        </div>
+        <div class="review-content">
+            {{ review.content }}
+        </div>
+        <div class="review-actions">
+            <button class="vote-btn" 
+                    hx-post="/api/review/{{ review.id }}/upvote" 
+                    hx-swap="none">
+                ▲ Upvote <span class="vote-count">{{ review.upvotes }}</span>
+            </button>
+            <button class="vote-btn" 
+                    hx-post="/api/review/{{ review.id }}/downvote" 
+                    hx-swap="none">
+                ▼ Downvote <span class="vote-count">{{ review.downvotes }}</span>
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add Review Form -->
+<div class="add-review">
+    <h3>Add Your Review</h3>
+    <form hx-post="/api/bill/{{ bill.id }}/review" hx-swap="none">
+        <div class="form-group">
+            <label class="form-label">Your Stance</label>
+            <div class="stance-options">
+                <input type="radio" id="support" name="stance" value="support" class="stance-radio" required>
+                <label for="support" class="stance-label">Support</label>
+                
+                <input type="radio" id="oppose" name="stance" value="oppose" class="stance-radio">
+                <label for="oppose" class="stance-label">Oppose</label>
+                
+                <input type="radio" id="critique" name="stance" value="critique" class="stance-radio">
+                <label for="critique" class="stance-label">Critique</label>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label" for="review-content">Your Review</label>
+            <textarea 
+                id="review-content" 
+                name="content" 
+                class="form-textarea" 
+                placeholder="Share your thoughts on this bill..."
+                required
+            ></textarea>
+        </div>
+        
+        <button type="submit" class="submit-btn">Submit Review</button>
+    </form>
+</div>
+

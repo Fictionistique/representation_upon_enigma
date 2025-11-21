@@ -4,6 +4,7 @@ mod chunker;
 mod embedder;
 mod vector_store;
 mod models;
+mod web;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -35,6 +36,12 @@ enum Commands {
     },
     /// Initialize the vector database
     Init,
+    /// Start the web server
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 3000)]
+        port: u16,
+    },
 }
 
 #[tokio::main]
@@ -116,6 +123,19 @@ async fn main() -> Result<()> {
                     println!("{}", "-".repeat(80));
                 }
             }
+        }
+        Commands::Serve { port } => {
+            tracing::info!("Starting web server on port {}...", port);
+            
+            let app = web::create_router();
+            
+            let addr = format!("0.0.0.0:{}", port);
+            let listener = tokio::net::TcpListener::bind(&addr).await?;
+            
+            tracing::info!("🌐 Server running at http://localhost:{}", port);
+            tracing::info!("📚 Access the civic knowledge base at http://localhost:{}/", port);
+            
+            axum::serve(listener, app).await?;
         }
     }
 

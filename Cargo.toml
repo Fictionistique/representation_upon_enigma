@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "representation_upon_enigma"
 version = "0.1.0"
 edition = "2021"
@@ -9,6 +9,9 @@ tokio = { version = "1.35", features = ["full"] }
 
 # Web framework & HTTP client
 axum = "0.7"
+askama = "0.12"
+askama_axum = "0.4"
+tower-http = { version = "0.5", features = ["fs"] }
 reqwest = { version = "0.11", features = ["json", "blocking"] }
 scraper = "0.18"
 
@@ -24,6 +27,7 @@ candle-nn = "0.8"
 candle-transformers = "0.8"
 hf-hub = { version = "0.3", features = ["tokio"] }
 tokenizers = "0.15"
+dirs = "5.0"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -36,27 +40,16 @@ thiserror = "1.0"
 # CLI
 clap = { version = "4.4", features = ["derive"] }
 
-# Utilities
+# UUID
 uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Date/Time
 chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Regex
 regex = "1.10"
 lazy_static = "1.4"
-dirs = "5.0"
-
-[dev-dependencies]
-tokio-test = "0.4"
-
-# Optimize for smaller binary and faster compile times in dev
-[profile.dev]
-opt-level = 1
-
-[profile.dev.package."*"]
-opt-level = 2
-
-# Production optimizations
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1

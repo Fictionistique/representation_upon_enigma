@@ -1,0 +1,18 @@
+{% for result in results %}
+<div class="suggestion-item" onclick="selectSuggestion({{ result.bill_id }})">
+    <div class="suggestion-title">
+        {{ result.bill_title }}
+        <span class="suggestion-score">{{ result.score }}</span>
+    </div>
+    <div class="suggestion-meta">
+        {{ result.section }} · {{ result.bill_number }}
+    </div>
+</div>
+{% endfor %}
+
+{% if results.len() == 0 %}
+<div class="suggestion-item" style="cursor: default;">
+    <div class="suggestion-meta">No results found</div>
+</div>
+{% endif %}
+

@@ -98,37 +98,53 @@ fn extract_text_from_file(filepath: &str) -> Result<String> {
 
 fn clean_pdf_text(text: &str) -> String {
     // Remove lopdf encoding error markers (Identity-H, MacRomanEncoding, etc.)
-    // Handles variations like "?Identity-H Unimplemented?" or "Identity-H Unimplemented?"
     let text = regex::Regex::new(r"\??[A-Za-z]+-[A-Z]\s+Unimplemented\??")
         .unwrap()
         .replace_all(text, "");
     
-    // Also catch simple question marks that are encoding artifacts
+    // Fix hyphenated line breaks: "word-\nword" -> "word" (rejoin hyphenated words)
+    let text = regex::Regex::new(r"([a-zA-Z])-\s*\n\s*([a-z])")
+        .unwrap()
+        .replace_all(&text, "$1$2");
+    
+    // Fix split words within a sentence (lowercase to lowercase with line break)
+    // Example: "acc\nount" -> "account"
+    let text = regex::Regex::new(r"([a-z]{2,})\s*\n\s*([a-z]{2,})")
+        .unwrap()
+        .replace_all(&text, "$1$2");
+    
+    // Fix split hyphens: "thirty\n-\nfirst" -> "thirty-first"
+    let text = regex::Regex::new(r"([a-zA-Z])\s*\n\s*-\s*\n\s*([a-zA-Z])")
+        .unwrap()
+        .replace_all(&text, "$1-$2");
+    
+    // Handle sentence boundaries: period/semicolon/colon followed by capital letter
+    let text = regex::Regex::new(r"([.;:])\s*\n+\s*([A-Z])")
+        .unwrap()
+        .replace_all(&text, "$1 $2");
+    
+    // Handle clause boundaries: lowercase to uppercase (add space)
+    let text = regex::Regex::new(r"([a-z])\s*\n+\s*([A-Z])")
+        .unwrap()
+        .replace_all(&text, "$1 $2");
+    
+    // Handle number to capital letter transitions (new clauses)
+    let text = regex::Regex::new(r"(\d)\s*\n+\s*([A-Z])")
+        .unwrap()
+        .replace_all(&text, "$1 $2");
+    
+    // Convert remaining newlines to spaces (within sentences)
+    let text = text.replace('\n', " ");
+    
+    // Remove stray question marks from encoding artifacts
     let text = regex::Regex::new(r"\s+\?\s+")
         .unwrap()
         .replace_all(&text, " ");
     
-    // Remove excessive whitespace
-    let text = regex::Regex::new(r"[ \t]+")
+    // Normalize whitespace
+    let text = regex::Regex::new(r"\s+")
         .unwrap()
         .replace_all(&text, " ");
-    
-    // Remove page numbers (common patterns)
-    let text = regex::Regex::new(r"\n\s*\d+\s*\n")
-        .unwrap()
-        .replace_all(&text, "\n");
-    
-    // Normalize line breaks (but keep paragraph structure)
-    let text = regex::Regex::new(r"\n{3,}")
-        .unwrap()
-        .replace_all(&text, "\n\n");
-    
-    // Remove lines that are only whitespace
-    let text = text
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
     
     text.trim().to_string()
 }
