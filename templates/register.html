@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Representation Upon Enigma</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="header-left">
+                    <a href="/" class="logo-link">
+                        <h1>Representation Upon Enigma</h1>
+                    </a>
+                    <p class="tagline">A Civic Knowledge Base for Indian Legislation</p>
+                </div>
+            </div>
+        </header>
+
+        <main class="auth-container">
+            <div class="auth-card auth-card-wide">
+                <h2 class="auth-title">Join the Conversation</h2>
+                <p class="auth-subtitle">Create an account to share your views on legislation</p>
+
+                {% if let Some(err) = error %}
+                <div class="auth-error">
+                    {{ err }}
+                </div>
+                {% endif %}
+
+                <form method="POST" action="/register" class="auth-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="username" class="form-label">Username <span class="required">*</span></label>
+                            <input 
+                                type="text" 
+                                id="username" 
+                                name="username" 
+                                class="form-input"
+                                required
+                                autocomplete="username"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password" class="form-label">Password <span class="required">*</span></label>
+                            <input 
+                                type="password" 
+                                id="password" 
+                                name="password" 
+                                class="form-input"
+                                required
+                                autocomplete="new-password"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="real_name" class="form-label">Real Name <span class="optional">(optional)</span></label>
+                        <input 
+                            type="text" 
+                            id="real_name" 
+                            name="real_name" 
+                            class="form-input"
+                            autocomplete="name"
+                        >
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="age" class="form-label">Age <span class="optional">(optional)</span></label>
+                            <input 
+                                type="number" 
+                                id="age" 
+                                name="age" 
+                                class="form-input"
+                                min="18"
+                                max="120"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="gender" class="form-label">Gender <span class="optional">(optional)</span></label>
+                            <select id="gender" name="gender" class="form-input">
+                                <option value="">Select...</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                                <option value="Prefer not to say">Prefer not to say</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3 class="form-section-title">Location Information</h3>
+                        <p class="form-section-desc">Choose how you'd like to identify your constituency</p>
+
+                        <div class="location-toggle">
+                            <input type="radio" id="loc_pincode" name="location_type" value="pincode" checked>
+                            <label for="loc_pincode" class="toggle-label">By Pincode</label>
+                            
+                            <input type="radio" id="loc_constituency" name="location_type" value="constituency">
+                            <label for="loc_constituency" class="toggle-label">By Constituency</label>
+                        </div>
+
+                        <div id="pincode-section" class="location-section">
+                            <div class="form-group">
+                                <label for="pincode" class="form-label">Pincode</label>
+                                <input 
+                                    type="text" 
+                                    id="pincode" 
+                                    name="pincode" 
+                                    class="form-input"
+                                    pattern="[0-9]{6}"
+                                    maxlength="6"
+                                    placeholder="e.g., 400001"
+                                >
+                            </div>
+                        </div>
+
+                        <div id="constituency-section" class="location-section hidden">
+                            <div class="form-group">
+                                <label for="constituency_id" class="form-label">Constituency</label>
+                                <select id="constituency_id" name="constituency_id" class="form-input">
+                                    <option value="">Select your constituency...</option>
+                                    {% for c in constituencies %}
+                                    <option value="{{ c.id }}">{{ c.name }} ({{ c.state }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="auth-submit">Create Account</button>
+                </form>
+
+                <p class="auth-switch">
+                    Already have an account? <a href="/login">Sign in here</a>
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.querySelectorAll('input[name="location_type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const pincodeSection = document.getElementById('pincode-section');
+                const constituencySection = document.getElementById('constituency-section');
+                
+                if (this.value === 'pincode') {
+                    pincodeSection.classList.remove('hidden');
+                    constituencySection.classList.add('hidden');
+                } else {
+                    pincodeSection.classList.add('hidden');
+                    constituencySection.classList.remove('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

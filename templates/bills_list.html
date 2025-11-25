@@ -1,0 +1,39 @@
+<ul class="bill-list">
+    {% for bill in bills %}
+    <li class="bill-item" 
+        hx-get="/api/bill/{{ bill.id }}/forum" 
+        hx-target="#forum-section"
+        hx-swap="innerHTML"
+        onclick="showForum()">
+        <div class="bill-title">{{ bill.title }}</div>
+        <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
+    </li>
+    {% endfor %}
+</ul>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if has_prev %}
+    <button 
+        class="page-btn"
+        hx-get="/api/bills?page={{ current_page - 1 }}"
+        hx-target="#bills-container"
+        hx-swap="innerHTML">
+        ← Prev
+    </button>
+    {% endif %}
+    
+    <span class="page-info">Page {{ current_page }} of {{ total_pages }}</span>
+    
+    {% if has_next %}
+    <button 
+        class="page-btn"
+        hx-get="/api/bills?page={{ current_page + 1 }}"
+        hx-target="#bills-container"
+        hx-swap="innerHTML">
+        Next →
+    </button>
+    {% endif %}
+</div>
+{% endif %}
+

@@ -5,6 +5,10 @@ mod embedder;
 mod vector_store;
 mod models;
 mod web;
+mod auth;
+mod db;
+mod moderation;
+mod rate_limit;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -66,6 +70,9 @@ async fn main() -> Result<()> {
         Commands::Ingest { count } => {
             tracing::info!("Starting ingestion of {} bills...", count);
             
+            // Create database pool for storing bills
+            let db_pool = db::create_pool().await?;
+            
             // Step 1: Scrape bills
             tracing::info!("Fetching bills from PRS...");
             let bills = scraper::fetch_recent_bills(count).await?;
@@ -74,6 +81,12 @@ async fn main() -> Result<()> {
             // Step 2: Process each bill
             for bill in bills {
                 tracing::info!("Processing: {}", bill.title);
+                
+                // Store bill in database
+                match db::insert_bill(&db_pool, &bill).await {
+                    Ok(_) => tracing::info!("  → Stored bill in database"),
+                    Err(e) => tracing::warn!("  → Failed to store bill in database: {}", e),
+                }
                 
                 // Extract text from PDF
                 tracing::info!("  → Extracting text from PDF...");
@@ -95,7 +108,7 @@ async fn main() -> Result<()> {
                 tracing::info!("✓ Completed: {}", bill.title);
             }
             
-            tracing::info!("✓ Ingestion completed successfully");
+            tracing::info!("✓ Ingestion completed successfully ({} bills processed)", count);
         }
         Commands::Query { query, limit } => {
             tracing::info!("Searching for: \"{}\"", query);
@@ -127,7 +140,7 @@ async fn main() -> Result<()> {
         Commands::Serve { port } => {
             tracing::info!("Starting web server on port {}...", port);
             
-            let app = web::create_router();
+            let app = web::create_router().await;
             
             let addr = format!("0.0.0.0:{}", port);
             let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -141,4 +154,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-

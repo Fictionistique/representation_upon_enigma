@@ -31,7 +31,9 @@
 
         <!-- Empty State -->
         <div id="empty-state" class="empty-state">
-            <p>👆 Enter a query to search through legislative bills</p>
+            <div class="empty-state-icon">📜</div>
+            <p class="empty-state-title">Explore Legislative Bills</p>
+            <p>Enter a query to search through legislative bills</p>
             <p>Or select a recent bill from the sidebar →</p>
         </div>
     </div>
@@ -39,18 +41,53 @@
     <!-- Recent Bills Sidebar -->
     <aside class="recent-bills">
         <h2>Recent Bills</h2>
-        <ul class="bill-list" id="recent-bills">
-            {% for bill in recent_bills %}
-            <li class="bill-item" 
-                hx-get="/api/bill/{{ bill.id }}/forum" 
-                hx-target="#forum-section"
-                hx-swap="innerHTML"
-                onclick="showForum()">
-                <div class="bill-title">{{ bill.title }}</div>
-                <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
-            </li>
-            {% endfor %}
-        </ul>
+        <div id="bills-container">
+            <ul class="bill-list">
+                {% for bill in recent_bills %}
+                <li class="bill-item" 
+                    hx-get="/api/bill/{{ bill.id }}/forum" 
+                    hx-target="#forum-section"
+                    hx-swap="innerHTML"
+                    onclick="showForum()">
+                    <div class="bill-title">{{ bill.title }}</div>
+                    <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
+                </li>
+                {% endfor %}
+            </ul>
+            
+            {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if has_prev %}
+                <button 
+                    class="page-btn"
+                    hx-get="/api/bills?page={{ current_page - 1 }}"
+                    hx-target="#bills-container"
+                    hx-swap="innerHTML">
+                    ← Prev
+                </button>
+                {% endif %}
+                
+                <span class="page-info">Page {{ current_page }} of {{ total_pages }}</span>
+                
+                {% if has_next %}
+                <button 
+                    class="page-btn"
+                    hx-get="/api/bills?page={{ current_page + 1 }}"
+                    hx-target="#bills-container"
+                    hx-swap="innerHTML">
+                    Next →
+                </button>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        {% if recent_bills.is_empty() %}
+        <div class="no-bills">
+            <p>No bills ingested yet.</p>
+            <p class="small">Run the ingestion command to populate the database.</p>
+        </div>
+        {% endif %}
     </aside>
 </div>
 
@@ -86,4 +123,3 @@
     });
 </script>
 {% endblock %}
-

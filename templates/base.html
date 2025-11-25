@@ -10,12 +10,28 @@
 <body>
     <div class="container">
         <header>
-            <h1>Representation Upon Enigma</h1>
-            <p>A Civic Knowledge Base for Indian Legislation</p>
+            <div class="header-content">
+                <div class="header-left">
+                    <a href="/" class="logo-link">
+                        <h1>Representation Upon Enigma</h1>
+                    </a>
+                    <p class="tagline">A Civic Knowledge Base for Indian Legislation</p>
+                </div>
+                <nav class="header-nav">
+                    {% block nav %}
+                    {% if user.is_some() %}
+                    <a href="/u/{{ user.as_ref().unwrap().username }}" class="nav-link">Profile</a>
+                    <a href="/logout" class="nav-link nav-link-secondary">Logout</a>
+                    {% else %}
+                    <a href="/login" class="nav-link">Login</a>
+                    <a href="/register" class="nav-link nav-link-primary">Register</a>
+                    {% endif %}
+                    {% endblock %}
+                </nav>
+            </div>
         </header>
 
         {% block content %}{% endblock %}
     </div>
 </body>
 </html>
-

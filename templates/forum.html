@@ -5,11 +5,18 @@
 
 <!-- Reviews -->
 <div class="reviews-list">
+    {% if reviews.is_empty() %}
+    <div class="no-reviews">
+        <p>No reviews yet. Be the first to share your thoughts!</p>
+    </div>
+    {% endif %}
+    
     {% for review in reviews %}
     <div class="review-card">
         <div class="review-header">
-            <div>
-                <div class="reviewer-info">Verified Constituent · {{ review.constituency }}</div>
+            <div class="review-user-info">
+                <a href="/u/{{ review.username }}" class="reviewer-name">{{ review.username }}</a>
+                <span class="reviewer-constituency">· {{ review.constituency }}</span>
                 <div class="review-date">{{ review.date }}</div>
             </div>
             <div class="review-stance {% if review.stance == "Support" %}support{% else %}{% if review.stance == "Oppose" %}oppose{% else %}critique{% endif %}{% endif %}">{{ review.stance }}</div>
@@ -18,25 +25,36 @@
             {{ review.content }}
         </div>
         <div class="review-actions">
+            {% if user.is_some() %}
             <button class="vote-btn" 
                     hx-post="/api/review/{{ review.id }}/upvote" 
-                    hx-swap="none">
-                ▲ Upvote <span class="vote-count">{{ review.upvotes }}</span>
+                    hx-swap="none"
+                    hx-on::after-request="this.querySelector('.vote-count').textContent = parseInt(this.querySelector('.vote-count').textContent) + 1">
+                ▲ <span class="vote-count">{{ review.upvotes }}</span>
             </button>
             <button class="vote-btn" 
                     hx-post="/api/review/{{ review.id }}/downvote" 
-                    hx-swap="none">
-                ▼ Downvote <span class="vote-count">{{ review.downvotes }}</span>
+                    hx-swap="none"
+                    hx-on::after-request="this.querySelector('.vote-count').textContent = parseInt(this.querySelector('.vote-count').textContent) + 1">
+                ▼ <span class="vote-count">{{ review.downvotes }}</span>
             </button>
+            {% else %}
+            <span class="vote-count-display">▲ {{ review.upvotes }} · ▼ {{ review.downvotes }}</span>
+            {% endif %}
         </div>
     </div>
     {% endfor %}
 </div>
 
 <!-- Add Review Form -->
+{% if user.is_some() %}
 <div class="add-review">
-    <h3>Add Your Review</h3>
-    <form hx-post="/api/bill/{{ bill.id }}/review" hx-swap="none">
+    <h3>Share Your View</h3>
+    {% if rate_limit_remaining > 0 %}
+    <p class="rate-limit-info">You can post {{ rate_limit_remaining }} more review(s) this hour.</p>
+    <form hx-post="/api/bill/{{ bill.id }}/review" 
+          hx-swap="none"
+          hx-on::after-request="if(event.detail.successful) { alert('Review submitted!'); location.reload(); } else { alert(event.detail.xhr.responseText); }">
         <div class="form-group">
             <label class="form-label">Your Stance</label>
             <div class="stance-options">
@@ -59,10 +77,24 @@
                 class="form-textarea" 
                 placeholder="Share your thoughts on this bill..."
                 required
+                minlength="10"
             ></textarea>
         </div>
         
         <button type="submit" class="submit-btn">Submit Review</button>
     </form>
+    {% else %}
+    <div class="rate-limit-exceeded">
+        <p>You've reached the maximum number of posts for this hour.</p>
+        <p>Please wait before posting again.</p>
+    </div>
+    {% endif %}
 </div>
-
+{% else %}
+<div class="login-prompt">
+    <p>Want to share your thoughts on this bill?</p>
+    <a href="/login" class="login-btn">Login to Participate</a>
+    <span>or</span>
+    <a href="/register" class="register-link">Create an Account</a>
+</div>
+{% endif %}
