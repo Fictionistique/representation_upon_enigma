@@ -70,8 +70,7 @@ Built entirely in **Rust** for performance, safety, and reliability.
 
 - **Rust** (stable) - [Install](https://rustup.rs/)
 - **Docker & Docker Compose** - [Install](https://docs.docker.com/get-docker/)
-- **Ollama** (optional, for AI moderation) - [Install](https://ollama.ai/)
-- ~500MB disk space for ML models + data
+- ~2GB disk space for ML models + data (includes Ollama Llama 3.2 model)
 
 ---
 
@@ -86,17 +85,21 @@ cd representation_upon_enigma
 
 ### 2. Start Services
 
-Start PostgreSQL and Qdrant using Docker:
+Start PostgreSQL, Qdrant, and Ollama using Docker:
 
 ```bash
 docker-compose up -d
 ```
+
+**Note**: First run will download Ollama and pull the Llama 3.2 model (~1.5GB). This may take 5-10 minutes depending on your internet connection.
 
 Verify services are running:
 
 ```bash
 docker-compose ps
 ```
+
+You should see three services: `civic_postgres`, `civic_qdrant`, and `civic_ollama`.
 
 ### 3. Set Environment Variables
 
@@ -278,6 +281,8 @@ DATABASE_URL=postgres://civic_user:civic_pass@localhost/civic_legislation
 QDRANT_URL=http://localhost:6333
 QDRANT_COLLECTION=legislation_chunks
 VECTOR_DIMENSION=384
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
 RUST_LOG=info
 ```
 
@@ -285,17 +290,12 @@ RUST_LOG=info
 
 - **PostgreSQL**: Port 5432
 - **Qdrant**: Port 6333 (HTTP), 6334 (gRPC)
-- **Qdrant Dashboard**: http://localhost:6333/dashboard
+  - Dashboard: http://localhost:6333/dashboard
+- **Ollama**: Port 11434
+  - Automatically pulls Llama 3.2 model on first startup
+  - Used for AI-powered content moderation
 
-### Ollama (Optional)
-
-For AI moderation, install Ollama and pull Llama 3.2:
-
-```bash
-ollama pull llama3.2
-```
-
-Fallback keyword-based moderation is used if Ollama is unavailable.
+**Note**: If Ollama is unavailable, the system automatically falls back to keyword-based moderation.
 
 ---
 
@@ -374,6 +374,17 @@ Check Qdrant status:
 docker-compose logs qdrant
 curl http://localhost:6333/health
 ```
+
+### AI Moderation Not Working
+
+Check Ollama status:
+
+```bash
+docker-compose logs ollama
+curl http://localhost:11434/api/tags
+```
+
+If Ollama is still downloading the model, wait a few minutes. The system will use fallback keyword moderation in the meantime.
 
 ### Model Download Failed
 
@@ -466,7 +477,3 @@ MIT License - See LICENSE file for details
 For questions, issues, or feature requests, please open an issue on GitHub.
 
 ---
-
-**Built with ❤️ for civic engagement in India**
-
-*Empowering citizens to understand legislation and enabling representatives to hear their constituents.*
