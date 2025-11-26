@@ -71,4 +71,4 @@ parking_lot = "0.12"
 time = "0.3"
 
 # PDF generation
-printpdf = "0.7"
+genpdf = "0.2"

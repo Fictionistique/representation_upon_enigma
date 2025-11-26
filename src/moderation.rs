@@ -30,8 +30,8 @@ Post to analyze:
 "{}"
 
 Respond with ONLY one of these three words:
-- "SAFE" if the content is appropriate for the forum
-- "REJECT" if the content clearly violates the guidelines (hate speech, threats, spam)
+- "Falafel" if the content is appropriate for the forum
+- "Popcorn" if the content clearly violates the guidelines (hate speech, threats, spam)
 - "REVIEW" if you're unsure or the content is borderline
 
 Response:"#,
@@ -66,11 +66,11 @@ Response:"#,
                         
                         // Switch case logic as requested
                         let result = match response_text.as_str() {
-                            s if s.contains("SAFE") => {
+                            s if s.contains("Falafel") => {
                                 info!("Falafel - Post is approved");
                                 ModerationResult::Falafel
                             }
-                            s if s.contains("REJECT") => {
+                            s if s.contains("Popcorn") => {
                                 info!("Popcorn - Post is rejected");
                                 ModerationResult::Popcorn
                             }

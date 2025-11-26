@@ -1,11 +1,13 @@
 # Multi-stage build for bill ingestion cron job
-FROM rust:1.75-slim as builder
+FROM rustlang/rust:nightly-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     curl \
+    build-essential \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -13,8 +15,10 @@ WORKDIR /app
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
 
-# Copy source code
+# Copy source code and templates
 COPY src ./src
+COPY templates ./templates
+COPY static ./static
 
 # Build the application in release mode
 RUN cargo build --release

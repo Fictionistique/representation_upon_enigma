@@ -13,6 +13,8 @@ downloads/
 models/
 documentation/
 personal/
+docs-1/
+seed*.sql
 
 # Docker volumes
 postgres_data/

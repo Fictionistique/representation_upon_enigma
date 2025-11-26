@@ -55,24 +55,24 @@ services:
         ollama pull llama3.2
         wait
 
-  bill-ingestion-cron:
-    build:
-      context: .
-      dockerfile: Dockerfile.cron
-    container_name: civic_bill_cron
-    environment:
-      - DATABASE_URL=postgres://civic_user:civic_pass@postgres:5432/civic_legislation
-      - QDRANT_URL=http://qdrant:6333
-      - QDRANT_COLLECTION=legislation_chunks
-      - RUST_LOG=info
-    depends_on:
-      postgres:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-    volumes:
-      - ./downloads:/app/downloads
-    restart: unless-stopped
+  # bill-ingestion-cron:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.cron
+  #   container_name: civic_bill_cron
+  #   environment:
+  #     - DATABASE_URL=postgres://civic_user:civic_pass@postgres:5432/civic_legislation
+  #     - QDRANT_URL=http://qdrant:6333
+  #     - QDRANT_COLLECTION=legislation_chunks
+  #     - RUST_LOG=info
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     qdrant:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./downloads:/app/downloads
+  #   restart: unless-stopped
 
 volumes:
   postgres_data:
