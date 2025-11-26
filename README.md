@@ -79,7 +79,7 @@ Built entirely in **Rust** for performance, safety, and reliability.
 ### 1. Clone & Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Fictionistique/representation_upon_enigma.git
 cd representation_upon_enigma
 ```
 
