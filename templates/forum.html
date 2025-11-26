@@ -28,14 +28,16 @@
             {% if user.is_some() %}
             <button class="vote-btn" 
                     hx-post="/api/review/{{ review.id }}/upvote" 
-                    hx-swap="none"
-                    hx-on::after-request="this.querySelector('.vote-count').textContent = parseInt(this.querySelector('.vote-count').textContent) + 1">
+                    hx-swap="innerHTML"
+                    hx-target="closest .review-actions"
+                    hx-disabled-elt="this">
                 ▲ <span class="vote-count">{{ review.upvotes }}</span>
             </button>
             <button class="vote-btn" 
                     hx-post="/api/review/{{ review.id }}/downvote" 
-                    hx-swap="none"
-                    hx-on::after-request="this.querySelector('.vote-count').textContent = parseInt(this.querySelector('.vote-count').textContent) + 1">
+                    hx-swap="innerHTML"
+                    hx-target="closest .review-actions"
+                    hx-disabled-elt="this">
                 ▼ <span class="vote-count">{{ review.downvotes }}</span>
             </button>
             {% else %}
@@ -52,9 +54,7 @@
     <h3>Share Your View</h3>
     {% if rate_limit_remaining > 0 %}
     <p class="rate-limit-info">You can post {{ rate_limit_remaining }} more review(s) this hour.</p>
-    <form hx-post="/api/bill/{{ bill.id }}/review" 
-          hx-swap="none"
-          hx-on::after-request="if(event.detail.successful) { alert('Review submitted!'); location.reload(); } else { alert(event.detail.xhr.responseText); }">
+    <form method="POST" action="/api/bill/{{ bill.id }}/review" class="review-form">
         <div class="form-group">
             <label class="form-label">Your Stance</label>
             <div class="stance-options">
@@ -98,3 +98,4 @@
     <a href="/register" class="register-link">Create an Account</a>
 </div>
 {% endif %}
+

@@ -69,3 +69,6 @@ parking_lot = "0.12"
 
 # Time for cookies
 time = "0.3"
+
+# PDF generation
+printpdf = "0.7"

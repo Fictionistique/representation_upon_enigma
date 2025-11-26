@@ -51,6 +51,15 @@ struct ForumTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "forum_page.html")]
+struct ForumPageTemplate {
+    bill: BillInfo,
+    reviews: Vec<Review>,
+    user: Option<CurrentUser>,
+    rate_limit_remaining: i64,
+}
+
+#[derive(Template)]
 #[template(path = "login.html")]
 struct LoginTemplate {
     error: Option<String>,
@@ -286,14 +295,17 @@ async fn bills_list_handler(
     })
 }
 
-async fn search_handler(Query(params): Query<SearchQuery>) -> impl IntoResponse {
+async fn search_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SearchQuery>,
+) -> impl IntoResponse {
     let query = params.query.trim();
 
     if query.is_empty() {
         return HtmlTemplate(SearchSuggestionsTemplate { results: vec![] });
     }
 
-    match perform_search(query).await {
+    match perform_search(query, &state.db_pool).await {
         Ok(results) => HtmlTemplate(SearchSuggestionsTemplate { results }),
         Err(_) => HtmlTemplate(SearchSuggestionsTemplate { results: vec![] }),
     }
@@ -364,6 +376,71 @@ async fn bill_forum_handler(
     .into_response()
 }
 
+async fn forum_page_handler(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+    Path(bill_id): Path<String>,
+) -> impl IntoResponse {
+    let bill_uuid = match Uuid::parse_str(&bill_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, "Invalid bill ID").into_response();
+        }
+    };
+
+    let user = get_current_user(&jar, &state.db_pool).await;
+    let current_user = user.as_ref().map(|u| CurrentUser {
+        id: u.id.to_string(),
+        username: u.username.clone(),
+    });
+
+    let rate_limit_remaining = if let Some(ref u) = user {
+        rate_limit::get_remaining_posts(&state.db_pool, u.id)
+            .await
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    let bill = match db::get_bill_by_id(&state.db_pool, bill_uuid).await {
+        Ok(Some(b)) => BillInfo {
+            id: b.id.to_string(),
+            title: b.title,
+            number: b.bill_number,
+            year: b.year,
+        },
+        _ => {
+            return (StatusCode::NOT_FOUND, "Bill not found").into_response();
+        }
+    };
+
+    let posts = db::get_posts_for_bill(&state.db_pool, bill_uuid)
+        .await
+        .unwrap_or_default();
+
+    let reviews: Vec<Review> = posts
+        .into_iter()
+        .map(|p| Review {
+            id: p.id.to_string(),
+            username: p.username,
+            constituency: p.constituency_name.unwrap_or_else(|| "Unknown".to_string()),
+            stance: p.stance,
+            content: p.content,
+            date: p.formatted_date,
+            upvotes: p.upvotes,
+            downvotes: p.downvotes,
+        })
+        .collect();
+
+    HtmlTemplate(ForumPageTemplate {
+        bill,
+        reviews,
+        user: current_user,
+        rate_limit_remaining,
+    })
+    .into_response()
+}
+
 async fn submit_review_handler(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -373,14 +450,14 @@ async fn submit_review_handler(
     let user = match get_current_user(&jar, &state.db_pool).await {
         Some(u) => u,
         None => {
-            return (StatusCode::UNAUTHORIZED, "Please log in to submit a review").into_response();
+            return Redirect::to("/login").into_response();
         }
     };
 
     let bill_uuid = match Uuid::parse_str(&bill_id) {
         Ok(id) => id,
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, "Invalid bill ID").into_response();
+            return Redirect::to("/").into_response();
         }
     };
 
@@ -389,11 +466,7 @@ async fn submit_review_handler(
         .await
         .unwrap_or(false)
     {
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            "Rate limit exceeded. Please wait before posting again.",
-        )
-            .into_response();
+        return Redirect::to(&format!("/f/{}?error=rate_limit", bill_id)).into_response();
     }
 
     // Moderate content
@@ -432,21 +505,11 @@ async fn submit_review_handler(
             // Record rate limit action
             let _ = rate_limit::record_post_action(&state.db_pool, user.id).await;
 
-            let message = match moderation_result {
-                models::ModerationResult::Falafel => "Review submitted successfully!",
-                models::ModerationResult::Popcorn => {
-                    "Your review was rejected due to content policy violation."
-                }
-                models::ModerationResult::AdminReview => {
-                    "Your review is pending admin approval."
-                }
-            };
-
-            (StatusCode::OK, message).into_response()
+            Redirect::to(&format!("/f/{}", bill_id)).into_response()
         }
         Err(e) => {
             tracing::error!("Failed to create post: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Failed to submit review").into_response()
+            Redirect::to(&format!("/f/{}?error=failed", bill_id)).into_response()
         }
     }
 }
@@ -459,20 +522,44 @@ async fn upvote_handler(
     let user = match get_current_user(&jar, &state.db_pool).await {
         Some(u) => u,
         None => {
-            return StatusCode::UNAUTHORIZED;
+            return (StatusCode::UNAUTHORIZED, Html("".to_string())).into_response();
         }
     };
 
     let post_uuid = match Uuid::parse_str(&review_id) {
         Ok(id) => id,
         Err(_) => {
-            return StatusCode::BAD_REQUEST;
+            return (StatusCode::BAD_REQUEST, Html("".to_string())).into_response();
         }
     };
 
     match db::upvote_post(&state.db_pool, post_uuid, user.id).await {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Ok((upvotes, downvotes, user_vote)) => {
+            let html = format!(
+                r#"<button class="vote-btn {}" 
+                        hx-post="/api/review/{}/upvote" 
+                        hx-swap="innerHTML"
+                        hx-target="closest .review-actions"
+                        hx-disabled-elt="this">
+                    ▲ <span class="vote-count">{}</span>
+                </button>
+                <button class="vote-btn {}" 
+                        hx-post="/api/review/{}/downvote" 
+                        hx-swap="innerHTML"
+                        hx-target="closest .review-actions"
+                        hx-disabled-elt="this">
+                    ▼ <span class="vote-count">{}</span>
+                </button>"#,
+                if user_vote == Some("upvote".to_string()) { "voted" } else { "" },
+                review_id,
+                upvotes,
+                if user_vote == Some("downvote".to_string()) { "voted" } else { "" },
+                review_id,
+                downvotes
+            );
+            (StatusCode::OK, Html(html)).into_response()
+        }
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Html("".to_string())).into_response(),
     }
 }
 
@@ -484,20 +571,44 @@ async fn downvote_handler(
     let user = match get_current_user(&jar, &state.db_pool).await {
         Some(u) => u,
         None => {
-            return StatusCode::UNAUTHORIZED;
+            return (StatusCode::UNAUTHORIZED, Html("".to_string())).into_response();
         }
     };
 
     let post_uuid = match Uuid::parse_str(&review_id) {
         Ok(id) => id,
         Err(_) => {
-            return StatusCode::BAD_REQUEST;
+            return (StatusCode::BAD_REQUEST, Html("".to_string())).into_response();
         }
     };
 
     match db::downvote_post(&state.db_pool, post_uuid, user.id).await {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Ok((upvotes, downvotes, user_vote)) => {
+            let html = format!(
+                r#"<button class="vote-btn {}" 
+                        hx-post="/api/review/{}/upvote" 
+                        hx-swap="innerHTML"
+                        hx-target="closest .review-actions"
+                        hx-disabled-elt="this">
+                    ▲ <span class="vote-count">{}</span>
+                </button>
+                <button class="vote-btn {}" 
+                        hx-post="/api/review/{}/downvote" 
+                        hx-swap="innerHTML"
+                        hx-target="closest .review-actions"
+                        hx-disabled-elt="this">
+                    ▼ <span class="vote-count">{}</span>
+                </button>"#,
+                if user_vote == Some("upvote".to_string()) { "voted" } else { "" },
+                review_id,
+                upvotes,
+                if user_vote == Some("downvote".to_string()) { "voted" } else { "" },
+                review_id,
+                downvotes
+            );
+            (StatusCode::OK, Html(html)).into_response()
+        }
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Html("".to_string())).into_response(),
     }
 }
 
@@ -794,20 +905,23 @@ async fn update_profile_handler(
 }
 
 // Helper functions
-async fn perform_search(query: &str) -> anyhow::Result<Vec<SearchResult>> {
+async fn perform_search(query: &str, pool: &PgPool) -> anyhow::Result<Vec<SearchResult>> {
     let query_embedding = embedder::embed_query(query).await?;
     let search_results = vector_store::search(&query_embedding, 3).await?;
 
-    let results: Vec<SearchResult> = search_results
-        .into_iter()
-        .map(|r| SearchResult {
-            bill_id: "".to_string(), // TODO: Extract from metadata
-            bill_title: r.bill_title,
-            bill_number: r.bill_number,
-            section: r.chunk_identifier,
-            score: format!("{:.2}", r.score),
-        })
-        .collect();
+    let mut results = Vec::new();
+    for r in search_results {
+        // Look up bill by bill_number to get the UUID
+        if let Ok(Some(bill)) = db::get_bill_by_number(pool, &r.bill_number).await {
+            results.push(SearchResult {
+                bill_id: bill.id.to_string(),
+                bill_title: r.bill_title,
+                bill_number: r.bill_number,
+                section: r.chunk_identifier,
+                score: format!("{:.2}", r.score),
+            });
+        }
+    }
 
     Ok(results)
 }
@@ -844,6 +958,8 @@ pub async fn create_router() -> Router {
         .route("/register", get(register_page).post(register_handler))
         .route("/logout", get(logout_handler))
         .route("/u/:username", get(profile_handler).post(update_profile_handler))
+        // Forum pages
+        .route("/f/:bill_id", get(forum_page_handler))
         // API endpoints
         .route("/api/search", get(search_handler))
         .route("/api/bills", get(bills_list_handler))
@@ -851,7 +967,83 @@ pub async fn create_router() -> Router {
         .route("/api/bill/:id/review", post(submit_review_handler))
         .route("/api/review/:id/upvote", post(upvote_handler))
         .route("/api/review/:id/downvote", post(downvote_handler))
+        .route("/api/constituencies", get(constituencies_handler))
+        .route("/api/mp/report", get(mp_report_handler))
         // Static files
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state)
+}
+
+// MP Report Handlers
+async fn constituencies_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Response, (StatusCode, String)> {
+    let constituencies = auth::get_all_constituencies(&state.db_pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    let json_constituencies: Vec<serde_json::Value> = constituencies
+        .iter()
+        .map(|c| serde_json::json!({
+            "id": c.id,
+            "name": c.name,
+            "state": c.state
+        }))
+        .collect();
+    
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        serde_json::to_string(&json_constituencies).unwrap(),
+    )
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct MPReportQuery {
+    constituency_id: i32,
+}
+
+async fn mp_report_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<MPReportQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    // Get constituency info
+    let constituency = auth::get_constituency_by_id(&state.db_pool, params.constituency_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((StatusCode::NOT_FOUND, "Constituency not found".to_string()))?;
+    
+    // Get sentiment data
+    let sentiments = crate::pdf_generator::get_constituency_sentiment(&state.db_pool, params.constituency_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    // Get all posts
+    let posts = crate::pdf_generator::get_constituency_posts(&state.db_pool, params.constituency_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    // Generate PDF
+    let pdf_bytes = crate::pdf_generator::generate_constituency_report(
+        &constituency.name,
+        &constituency.state,
+        sentiments,
+        posts,
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    
+    // Return PDF
+    Ok((
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, "application/pdf"),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                &format!("attachment; filename=\"{}_report.pdf\"", constituency.name.replace(" ", "_")),
+            ),
+        ],
+        pdf_bytes,
+    )
+        .into_response())
 }

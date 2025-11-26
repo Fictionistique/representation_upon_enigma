@@ -57,7 +57,6 @@ pub async fn get_bill_by_id(pool: &PgPool, bill_id: Uuid) -> Result<Option<DbBil
 }
 
 /// Get bill by bill number
-#[allow(dead_code)]
 pub async fn get_bill_by_number(pool: &PgPool, bill_number: &str) -> Result<Option<DbBill>> {
     let bill = sqlx::query_as::<_, DbBill>("SELECT * FROM bills WHERE bill_number = $1")
         .bind(bill_number)
@@ -228,8 +227,8 @@ pub async fn get_posts_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<(Post
     Ok(posts)
 }
 
-/// Upvote a post
-pub async fn upvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<bool> {
+/// Upvote a post - returns (upvotes, downvotes, user_vote_type)
+pub async fn upvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<(i32, i32, Option<String>)> {
     // Check if user already voted
     let existing: Option<(String,)> = sqlx::query_as(
         "SELECT vote_type FROM post_votes WHERE post_id = $1 AND user_id = $2"
@@ -239,7 +238,7 @@ pub async fn upvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<
     .fetch_optional(pool)
     .await?;
 
-    match existing {
+    let new_vote_type: Option<String> = match existing {
         Some((vote_type,)) if vote_type == "upvote" => {
             // Already upvoted, remove vote
             sqlx::query("DELETE FROM post_votes WHERE post_id = $1 AND user_id = $2")
@@ -251,6 +250,7 @@ pub async fn upvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<
                 .bind(post_id)
                 .execute(pool)
                 .await?;
+            None // Vote removed
         }
         Some((vote_type,)) if vote_type == "downvote" => {
             // Was downvote, switch to upvote
@@ -263,6 +263,7 @@ pub async fn upvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<
                 .bind(post_id)
                 .execute(pool)
                 .await?;
+            Some("upvote".to_string())
         }
         _ => {
             // No existing vote, add upvote
@@ -279,14 +280,23 @@ pub async fn upvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<
                 .bind(post_id)
                 .execute(pool)
                 .await?;
+            Some("upvote".to_string())
         }
-    }
+    };
 
-    Ok(true)
+    // Get updated counts
+    let counts: (i32, i32) = sqlx::query_as(
+        "SELECT upvotes, downvotes FROM posts WHERE id = $1"
+    )
+    .bind(post_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((counts.0, counts.1, new_vote_type))
 }
 
-/// Downvote a post
-pub async fn downvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<bool> {
+/// Downvote a post - returns (upvotes, downvotes, user_vote_type)
+pub async fn downvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Result<(i32, i32, Option<String>)> {
     // Check if user already voted
     let existing: Option<(String,)> = sqlx::query_as(
         "SELECT vote_type FROM post_votes WHERE post_id = $1 AND user_id = $2"
@@ -296,7 +306,7 @@ pub async fn downvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Resul
     .fetch_optional(pool)
     .await?;
 
-    match existing {
+    let new_vote_type: Option<String> = match existing {
         Some((vote_type,)) if vote_type == "downvote" => {
             // Already downvoted, remove vote
             sqlx::query("DELETE FROM post_votes WHERE post_id = $1 AND user_id = $2")
@@ -308,6 +318,7 @@ pub async fn downvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Resul
                 .bind(post_id)
                 .execute(pool)
                 .await?;
+            None // Vote removed
         }
         Some((vote_type,)) if vote_type == "upvote" => {
             // Was upvote, switch to downvote
@@ -320,6 +331,7 @@ pub async fn downvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Resul
                 .bind(post_id)
                 .execute(pool)
                 .await?;
+            Some("downvote".to_string())
         }
         _ => {
             // No existing vote, add downvote
@@ -336,10 +348,19 @@ pub async fn downvote_post(pool: &PgPool, post_id: Uuid, user_id: Uuid) -> Resul
                 .bind(post_id)
                 .execute(pool)
                 .await?;
+            Some("downvote".to_string())
         }
-    }
+    };
 
-    Ok(true)
+    // Get updated counts
+    let counts: (i32, i32) = sqlx::query_as(
+        "SELECT upvotes, downvotes FROM posts WHERE id = $1"
+    )
+    .bind(post_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((counts.0, counts.1, new_vote_type))
 }
 
 /// Get user profile with post count

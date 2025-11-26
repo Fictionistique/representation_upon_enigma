@@ -9,6 +9,7 @@ mod auth;
 mod db;
 mod moderation;
 mod rate_limit;
+mod pdf_generator;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

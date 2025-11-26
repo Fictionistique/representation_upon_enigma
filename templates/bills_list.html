@@ -1,12 +1,10 @@
 <ul class="bill-list">
     {% for bill in bills %}
-    <li class="bill-item" 
-        hx-get="/api/bill/{{ bill.id }}/forum" 
-        hx-target="#forum-section"
-        hx-swap="innerHTML"
-        onclick="showForum()">
-        <div class="bill-title">{{ bill.title }}</div>
-        <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
+    <li class="bill-item">
+        <a href="/f/{{ bill.id }}" class="bill-link" hx-boost="false">
+            <div class="bill-title">{{ bill.title }}</div>
+            <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
+        </a>
     </li>
     {% endfor %}
 </ul>

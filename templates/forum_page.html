@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block title %}{{ bill.title }} - Forum{% endblock %}
+
 {% block content %}
 <div class="main-layout">
     <div class="search-section">
@@ -24,17 +26,9 @@
             <div id="search-suggestions" class="search-suggestions" style="display: none;"></div>
         </div>
 
-        <!-- Forum Section (Initially Hidden) -->
-        <div id="forum-section" class="forum-section hidden">
-            <!-- Forum content will be loaded here via HTMX -->
-        </div>
-
-        <!-- Empty State -->
-        <div id="empty-state" class="empty-state">
-            <div class="empty-state-icon">📜</div>
-            <p class="empty-state-title">Explore Legislative Bills</p>
-            <p>Enter a query to search through legislative bills</p>
-            <p>Or select a recent bill from the sidebar →</p>
+        <!-- Forum Section -->
+        <div id="forum-section" class="forum-section">
+            {% include "forum.html" %}
         </div>
     </div>
 
@@ -46,51 +40,9 @@
         </button>
         
         <h2>Recent Bills</h2>
-        <div id="bills-container">
-            <ul class="bill-list">
-                {% for bill in recent_bills %}
-                <li class="bill-item">
-                    <a href="/f/{{ bill.id }}" class="bill-link" hx-boost="false">
-                        <div class="bill-title">{{ bill.title }}</div>
-                        <div class="bill-meta">{{ bill.year }} · Bill No. {{ bill.number }}</div>
-                    </a>
-                </li>
-                {% endfor %}
-            </ul>
-            
-            {% if total_pages > 1 %}
-            <div class="pagination">
-                {% if has_prev %}
-                <button 
-                    class="page-btn"
-                    hx-get="/api/bills?page={{ current_page - 1 }}"
-                    hx-target="#bills-container"
-                    hx-swap="innerHTML">
-                    ← Prev
-                </button>
-                {% endif %}
-                
-                <span class="page-info">Page {{ current_page }} of {{ total_pages }}</span>
-                
-                {% if has_next %}
-                <button 
-                    class="page-btn"
-                    hx-get="/api/bills?page={{ current_page + 1 }}"
-                    hx-target="#bills-container"
-                    hx-swap="innerHTML">
-                    Next →
-                </button>
-                {% endif %}
-            </div>
-            {% endif %}
+        <div id="bills-container" hx-get="/api/bills?page=1" hx-trigger="load" hx-swap="innerHTML">
+            <!-- Bills will be loaded here -->
         </div>
-
-        {% if recent_bills.is_empty() %}
-        <div class="no-bills">
-            <p>No bills ingested yet.</p>
-            <p class="small">Run the ingestion command to populate the database.</p>
-        </div>
-        {% endif %}
     </aside>
 </div>
 
@@ -99,7 +51,7 @@
     <div class="modal-content">
         <span class="modal-close" onclick="closeMPModal()">&times;</span>
         <h2 class="modal-title">MP Constituency Dashboard</h2>
-        <p class="modal-subtitle">Generate a comprehensive report of constituency stance</p>
+        <p class="modal-subtitle">Generate a comprehensive report of constituent sentiment</p>
         
         <form id="mp-form" action="/api/mp/report" method="GET" target="_blank">
             <div class="form-group">
@@ -115,22 +67,12 @@
 </div>
 
 <script>
-    function showForum() {
-        document.getElementById('forum-section').classList.remove('hidden');
-        document.getElementById('empty-state').style.display = 'none';
-    }
-
     function selectSuggestion(billId) {
         // Hide suggestions
         document.getElementById('search-suggestions').style.display = 'none';
         
-        // Load forum
-        htmx.ajax('GET', '/api/bill/' + billId + '/forum', {
-            target: '#forum-section',
-            swap: 'innerHTML'
-        }).then(() => {
-            showForum();
-        });
+        // Navigate to forum page
+        window.location.href = '/f/' + billId;
     }
 
     // Show suggestions when they load
@@ -179,3 +121,4 @@
     }
 </script>
 {% endblock %}
+
