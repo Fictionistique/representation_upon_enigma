@@ -13,3 +13,8 @@ downloads/
 models/
 documentation/
 personal/
+
+# Docker volumes
+postgres_data/
+qdrant_data/
+ollama_data/

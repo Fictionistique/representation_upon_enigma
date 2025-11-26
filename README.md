@@ -154,7 +154,7 @@ cargo run -- ingest [--count <number>]
 ```
 
 Options:
-- `--count`: Number of bills to fetch (default: 5)
+- `--count`: Number of bills to fetch (default: 5, cron uses 10)
 
 ### Query Knowledge Base
 
@@ -294,6 +294,10 @@ RUST_LOG=info
 - **Ollama**: Port 11434
   - Automatically pulls Llama 3.2 model on first startup
   - Used for AI-powered content moderation
+- **Bill Ingestion Cron**: Automatic weekly updates
+  - Runs every Sunday at 2 AM
+  - Fetches 10 new bills from PRS India
+  - Logs available via `docker logs civic_bill_cron`
 
 **Note**: If Ollama is unavailable, the system automatically falls back to keyword-based moderation.
 
@@ -386,6 +390,15 @@ curl http://localhost:11434/api/tags
 
 If Ollama is still downloading the model, wait a few minutes. The system will use fallback keyword moderation in the meantime.
 
+### Cron Job Not Running
+
+Check the cron container status:
+
+```bash
+docker logs civic_bill_cron
+docker exec civic_bill_cron crontab -l  # View cron schedule
+```
+
 ### Model Download Failed
 
 First run downloads ~90MB from HuggingFace. Ensure stable internet. Models are cached in `~/.cache/huggingface/`.
@@ -401,6 +414,8 @@ Ingest bills first:
 ```bash
 cargo run -- ingest --count 5
 ```
+
+Or wait for the next scheduled run (Sundays at 2 AM).
 
 ### Constituencies Not Showing in Registration
 
