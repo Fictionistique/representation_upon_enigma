@@ -22,9 +22,9 @@ pub async fn check_content(content: &str) -> Result<ModerationResult> {
     let prompt = format!(
         r#"You are a content moderator. Analyze the following user post for a civic legislation forum and determine if it contains:
 1. Hate speech or discriminatory language
-2. Threats or violent content
-3. Spam or irrelevant content
-4. Toxic or abusive language
+2. Threats
+3. Toxic language
+4. Advertisements and similar spam
 
 Post to analyze:
 "{}"
